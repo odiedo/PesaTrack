@@ -6,6 +6,8 @@ import os
 from decimal import Decimal
 import bcrypt
 import uuid
+from datetime import datetime
+
 
 app = Flask(__name__)
 CORS(app)
@@ -167,6 +169,9 @@ def complete_purchase():
     try:
         customer_number = generate_customer_number()
 
+        purchase_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+
         db = get_db_connection()
         cursor = db.cursor()
 
@@ -175,8 +180,8 @@ def complete_purchase():
 
         for item in purchase_items:
             cursor.execute(
-                'INSERT INTO purchases (item_id, quantity, price, customer_number) VALUES (%s, %s, %s, %s)',
-                (item['id'], item['quantity'], item['price'], customer_number)
+                'INSERT INTO purchases (item_id, quantity, price, customer_number, purchase_time) VALUES (%s, %s, %s, %s, %s)',
+                (item['id'], item['quantity'], item['price'], customer_number, purchase_time)
             )
 
         db.commit()  

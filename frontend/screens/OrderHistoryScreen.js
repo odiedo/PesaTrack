@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, FlatList, TouchableOpacity, Modal, StyleSheet } from 'react-native';
 import axios from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const RecentSalesScreen = () => {
   const [recentSales, setRecentSales] = useState([]);
@@ -8,34 +9,50 @@ const RecentSalesScreen = () => {
   const [salesDetails, setSalesDetails] = useState([]);
   const [modalVisible, setModalVisible] = useState(false);
 
+  // Fetch the list of recent sales
   useEffect(() => {
     fetchRecentSales();
   }, []);
 
   const fetchRecentSales = async () => {
+    const sessionId = await AsyncStorage.getItem('sessionId'); 
+    if (!sessionId) {
+      Alert.alert('Error', 'You are not authenticated. Please log in.');
+      navigation.navigate('SignIn'); 
+      return;
+    }
     try {
-      const response = await axios.get('http://192.168.100.20:5000/recent-sales');
-      setRecentSales(response.data);
+      const response = await axios.get('http://192.168.23.132/payment/recent_sales.php');
+      setRecentSales(response.data.recent_sales);
     } catch (error) {
       console.error('Failed to fetch recent sales:', error);
     }
   };
 
+  // sales details for a specific customer
   const fetchSalesDetails = async (customerNumber) => {
+    const sessionId = await AsyncStorage.getItem('sessionId'); 
+    if (!sessionId) {
+      Alert.alert('Error', 'You are not authenticated. Please log in.');
+      navigation.navigate('Signin'); 
+      return;
+    }
     try {
-      const response = await axios.get(`http://192.168.100.20:5000/sales-details/${customerNumber}`);
-      setSalesDetails(response.data);
+      const response = await axios.get(`http://192.168.23.132/payment/sales_details.php?customer_number=${customerNumber}`);      
+      setSalesDetails(response.data.sales_details);
       setSelectedCustomer(customerNumber);
       setModalVisible(true);
     } catch (error) {
       console.error('Failed to fetch sales details:', error);
     }
   };
+  
 
+  // Render each sale item
   const renderItem = ({ item }) => (
     <TouchableOpacity onPress={() => fetchSalesDetails(item.customer_number)}>
       <View style={styles.itemContainer}>
-        <Text style={styles.customerText}>{item.customer_number}</Text>
+        <Text style={styles.customerText}>Customer: {item.customer_number}</Text>
         <Text style={styles.itemText}>Total Items: {item.total_items}</Text>
         <Text style={styles.itemText}>Total Amount: Kshs. {item.total_amount}</Text>
       </View>
@@ -47,10 +64,11 @@ const RecentSalesScreen = () => {
       <FlatList
         data={recentSales}
         renderItem={renderItem}
-        keyExtractor={(item) => item.customer_number}
+        keyExtractor={(item) => item.customer_number.toString()}
         contentContainerStyle={styles.listContent}
       />
 
+      {/* Modal for showing sales details */}
       <Modal
         visible={modalVisible}
         animationType="slide"
@@ -59,7 +77,7 @@ const RecentSalesScreen = () => {
       >
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{selectedCustomer}</Text>
+            <Text style={styles.modalTitle}>Sales Details for Customer {selectedCustomer}</Text>
             <FlatList
               data={salesDetails}
               renderItem={({ item }) => (

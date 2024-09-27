@@ -1,6 +1,8 @@
 import React, { useContext, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, Image, Modal, TextInput, StyleSheet } from 'react-native';
+import { Icon } from 'react-native-elements';
 import { CartContext } from './CartContext'; 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function CartScreen({ route, navigation }) {
   const { cart, resetCart } = useContext(CartContext);
@@ -62,6 +64,12 @@ export default function CartScreen({ route, navigation }) {
   };
 
   const handleCompletePurchase = async () => {
+    const sessionId = await AsyncStorage.getItem('sessionId'); 
+    if (!sessionId) {
+      Alert.alert('Error', 'You are not authenticated. Please log in.');
+      navigation.navigate('Signin'); 
+      return;
+    }
     try {
       const purchaseItems = cartItems.map(item => ({
         id: item.id,
@@ -69,7 +77,7 @@ export default function CartScreen({ route, navigation }) {
         price: parseFloat(item.price),
       }));
 
-      const response = await fetch('http://192.168.100.20:5000/completePurchase', {
+      const response = await fetch('http://192.168.23.132/payment/purchase.php', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -190,6 +198,7 @@ export default function CartScreen({ route, navigation }) {
         >
           <View style={styles.modalContainer}>
             <View style={styles.successMessage}>
+              <Icon name="check-circle" size={80} color="#4CAF50" style={styles.successIcon} />
               <Text style={styles.successMessageText}>Purchase Successful!</Text>
             </View>
           </View>
@@ -349,14 +358,24 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   successMessage: {
-    backgroundColor: '#28a745',
-    padding: 20,
-    borderRadius: 10,
+    backgroundColor: '#fff',
+    padding: 40,
+    borderRadius: 15,
     alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6.27,
+    elevation: 10, // Subtle shadow effect
+  },
+  successIcon: {
+    marginBottom: 20, // Add spacing between icon and text
   },
   successMessageText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#333', // Dark, clean font color
+    textAlign: 'center',
   },
 });

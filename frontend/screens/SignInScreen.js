@@ -1,44 +1,46 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
-import { Icon } from 'react-native-elements';
+import { View, Text, TextInput, TouchableOpacity, Alert, ActivityIndicator, StyleSheet } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function SignInScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Handle user login
   const handleSignIn = async () => {
-    setLoading(true);
-    try {
-      if (email === '' || password === '') {
-        Alert.alert('Error', 'Please fill in all fields.');
-        setLoading(false);
-        return;
-      }
+    if (!email || !password) {
+      Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
 
-      const response = await fetch('http://192.168.100.20:5000/sign-in', {
+    setLoading(true);
+
+    try {
+      const response = await fetch('http://192.168.23.132/payment/signin.php', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
 
       const data = await response.json();
+      setLoading(false);
 
-      if (response.ok) {
-        Alert.alert('Success', 'You have signed in successfully!');
-        navigation.navigate('Home');
+      if (data.success) {
+        // Store session ID in AsyncStorage
+        await AsyncStorage.setItem('sessionId', data.sessionId);
+
+        Alert.alert('Success', 'Logged in successfully');
+        navigation.navigate('Home');  // Navigate to the home screen after login
       } else {
-        Alert.alert('Error', data.error || 'Failed to sign in. Please try again.');
+        Alert.alert('Error', data.message || 'Invalid credentials');
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to sign in. Please try again.');
-    } finally {
       setLoading(false);
+      Alert.alert('Error', 'Something went wrong. Please try again.');
     }
   };
-
+  
   return (
     <View style={styles.container}>
       <View style={styles.titleMain}>
@@ -67,7 +69,7 @@ export default function SignInScreen({ navigation }) {
 
       <TouchableOpacity style={styles.button} onPress={handleSignIn} disabled={loading}>
         {loading ? (
-          <Icon name="spinner" size={24} color="#fff" type="font-awesome" />
+          <ActivityIndicator size="small" color="#fff" />
         ) : (
           <Text style={styles.buttonText}>Sign In</Text>
         )}

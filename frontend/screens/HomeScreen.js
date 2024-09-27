@@ -1,8 +1,9 @@
 import React, { useContext, useState, useEffect } from 'react';
-import { View, Text, TextInput, FlatList, TouchableOpacity, Image, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, FlatList, TouchableOpacity, Image, StyleSheet, ScrollView, ActivityIndicator, Alert } from 'react-native';
 import { Icon } from 'react-native-elements';
 import { CartContext } from './CartContext'; 
 import { getProductsFromJson, syncProducts } from '../api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function HomeScreen({ navigation }) {
   const { cart, addToCart, resetCart } = useContext(CartContext);
@@ -10,17 +11,30 @@ export default function HomeScreen({ navigation }) {
   const [groceriesData, setGroceriesData] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // Fetch products and handle session expiration
   const fetchProducts = async () => {
+    const sessionId = await AsyncStorage.getItem('sessionId'); 
+    if (!sessionId) {
+      Alert.alert('Error', 'You are not authenticated. Please log in.');
+      navigation.navigate('SignIn'); 
+      return;
+    }
+
     try {
       const data = await getProductsFromJson();
       if (data && Array.isArray(data.products)) {
         setGroceriesData(data.products);
+      } else if (data.message === 'Session expired') {
+        Alert.alert('Session Expired', 'Please log in again.');
+        await AsyncStorage.removeItem('sessionId');
+        navigation.navigate('Signin');
       } else {
         console.error('Unexpected response format:', data);
         setGroceriesData([]);
       }
     } catch (error) {
       console.error('Failed to fetch products:', error);
+      Alert.alert('Error', 'Failed to load products. Please try again.');
       setGroceriesData([]);
     } finally {
       setLoading(false);
@@ -44,9 +58,29 @@ export default function HomeScreen({ navigation }) {
     }
     return acc;
   }, {});
-
+  const handleLogout = async () => {
+    try {
+      const response = await fetch('http://192.168.23.132/payment/logout.php', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      const result = await response.json();
+      if (result.success) {
+        // Navigate to SignIn screen
+        navigation.navigate('Signin');
+      } else {
+        // Handle errors
+        console.error(result.message);
+      }
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
+  };
   return (
     <View style={styles.container}>
+      {/* Header section */}
       <View style={styles.headerMain}>
         <Text style={styles.header}>PesaTrack</Text>
         <Text style={styles.subtitle}>Your one-stop shop for all products!</Text>
@@ -66,12 +100,14 @@ export default function HomeScreen({ navigation }) {
         </View>
       </View>
 
+      {/* Show loading spinner while fetching data */}
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#007BFF" />
         </View>
       ) : (
         <ScrollView style={styles.itemsBody}>
+          {/* Categorized products display */}
           {Object.keys(categorizedProducts).map((category, index) => (
             <View key={index} style={styles.categorySection}>
               <Text style={styles.categoryTitle}>{category}</Text>
@@ -97,16 +133,15 @@ export default function HomeScreen({ navigation }) {
         </ScrollView>
       )}
 
+      {/* Bottom Navigation Bar */}
       <View style={styles.navBar}>
-        <TouchableOpacity
-          style={styles.navItem}
-          onPress={async () => {
-            await syncProducts();
-            fetchProducts();
-          }}
-        >
-          <Icon name="sync" size={24} color="#fff" />
-          <Text style={styles.navText}>Sync</Text>
+        <TouchableOpacity style={styles.navItem} onPress={handleLogout}>
+          <Icon name="logout" size={24} color="#fff" />
+          <Text style={styles.navText}>Logout</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('OrderHistory')}>
+          <Icon name="receipt" size={24} color="#fff" />
+          <Text style={styles.navText}>Recent Sales</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.navItem} onPress={resetCart}>
           <Icon name="refresh" size={24} color="#fff" />
@@ -118,10 +153,6 @@ export default function HomeScreen({ navigation }) {
             <Text style={styles.cartBadgeText}>{cart.length}</Text>
           </View>
           <Text style={styles.navText}>Cart</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('OrderHistory')}>
-          <Icon name="receipt" size={24} color="#fff" />
-          <Text style={styles.navText}>Recent Sales</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('Home')}>
           <Icon name="home" size={24} color="#fff" />
@@ -168,6 +199,11 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     color: '#000',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   navBar: {
     flexDirection: 'row',

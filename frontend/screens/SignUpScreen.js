@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Alert, StyleSheet } from 'react-native';
 import { Icon } from 'react-native-elements';
 const SignUpScreen = ({ navigation }) => {
   const [name, setName] = useState('');
@@ -11,35 +11,37 @@ const SignUpScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(false);
 
   const handleSignUp = () => {
-    setLoading(true);
     if (password !== confirmPassword) {
-        alert('Passwords do not match');
-        setLoading(false);
-        return;
+      Alert.alert('Error', 'Passwords do not match');
+      return;
     }
 
-    fetch('http://192.168.100.20:5000/sign-up', {
+    if (email && password) {
+      fetch('http://192.168.100.20/payment/signup.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, id_number: idNumber, phone, email, password }),
-    })
-    .then(response => response.json())
-    .then(data => {
-    if (data.error) {
-        alert(data.error);
+        body: JSON.stringify({ 
+          name,
+          id_number: idNumber,
+          phone,
+          email, 
+          password 
+        }),
+      })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            Alert.alert('Success', 'Account created successfully');
+          } else {
+            Alert.alert('Error', data.message || 'Signup failed');
+          }
+        })
+        .catch(error => {
+          Alert.alert('Error', 'Something went wrong');
+        });
     } else {
-        alert('Sign-up successful');
-        navigation.navigate('Signin');
+      Alert.alert('Error', 'Please fill in all fields');
     }
-    setLoading(false);
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('An error occurred. Please try again.');
-        setLoading(false);
-    });
-
-    
   };
 
   return (
