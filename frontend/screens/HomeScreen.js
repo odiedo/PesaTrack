@@ -1,46 +1,93 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, FlatList, TouchableOpacity, Image, StyleSheet, ScrollView, Alert } from 'react-native';
+import React, { useContext, useState, useEffect } from 'react';
+import { View, Text, TextInput, FlatList, TouchableOpacity, Image, StyleSheet, ScrollView, ActivityIndicator, Alert } from 'react-native';
 import { Icon } from 'react-native-elements';
+import { CartContext } from './CartContext'; 
+import { getProductsFromJson, syncProducts } from '../api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export default function AdminDashboard() {
+export default function HomeScreen({ navigation }) {
+  const { cart, addToCart, resetCart } = useContext(CartContext);
   const [searchTerm, setSearchTerm] = useState('');
+  const [groceriesData, setGroceriesData] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  // Dummy inventory data
-  const inventoryData = [
-    { id: 1, name: 'Apple iPhone 14', price: '999', image: 'https://dummyimage.com/60x60/000/fff' },
-    { id: 2, name: 'MacBook Pro 16"', price: '2499', image: 'https://dummyimage.com/60x60/000/fff' },
-    { id: 3, name: 'AirPods Pro', price: '249', image: 'https://dummyimage.com/60x60/000/fff' },
-  ];
+  // Fetch products and handle session expiration
+  const fetchProducts = async () => {
+    const sessionId = await AsyncStorage.getItem('sessionId'); 
+    if (!sessionId) {
+      Alert.alert('Error', 'You are not authenticated. Please log in.');
+      navigation.navigate('SignIn'); 
+      return;
+    }
 
-  // Dummy sales report data
-  const salesReport = [
-    { date: '2024-09-01', totalSales: '5000' },
-    { date: '2024-09-02', totalSales: '6200' },
-    { date: '2024-09-03', totalSales: '7100' },
-  ];
+    try {
+      const data = await getProductsFromJson();
+      if (data && Array.isArray(data.products)) {
+        setGroceriesData(data.products);
+      } else if (data.message === 'Session expired') {
+        Alert.alert('Session Expired', 'Please log in again.');
+        await AsyncStorage.removeItem('sessionId');
+        navigation.navigate('Signin');
+      } else {
+        console.error('Unexpected response format:', data);
+        setGroceriesData([]);
+      }
+    } catch (error) {
+      console.error('Failed to fetch products:', error);
+      Alert.alert('Error', 'Failed to load products. Please try again.');
+      setGroceriesData([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  // Dummy user management data
-  const users = [
-    { name: 'John Doe', role: 'Admin' },
-    { name: 'Jane Smith', role: 'Cashier' },
-    { name: 'Michael Brown', role: 'Manager' },
-  ];
+  useEffect(() => {
+    fetchProducts();
+  }, []);
 
-  // Filtered inventory data
-  const filteredInventory = inventoryData.filter(item =>
+  const filteredGroceries = groceriesData.filter(item =>
     item.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const categorizedProducts = filteredGroceries.reduce((acc, product) => {
+    if (!acc[product.category]) {
+      acc[product.category] = [];
+    }
+    if (acc[product.category].length < 10) {
+      acc[product.category].push(product);
+    }
+    return acc;
+  }, {});
+  const handleLogout = async () => {
+    try {
+      const response = await fetch('http://192.168.23.132/payment/logout.php', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      const result = await response.json();
+      if (result.success) {
+        // Navigate to SignIn screen
+        navigation.navigate('Signin');
+      } else {
+        // Handle errors
+        console.error(result.message);
+      }
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
+  };
   return (
     <View style={styles.container}>
-      {/* Header */}
+      {/* Header section */}
       <View style={styles.headerMain}>
-        <Text style={styles.header}>Admin Dashboard</Text>
-        <Text style={styles.subtitle}>Manage Inventory, Sales, and Users</Text>
+        <Text style={styles.header}>PesaTrack</Text>
+        <Text style={styles.subtitle}>Your one-stop shop for all products!</Text>
         <View style={styles.searchContainer}>
           <TextInput
             style={styles.searchInput}
-            placeholder="Search inventory..."
+            placeholder="Search products..."
             placeholderTextColor="#000"
             value={searchTerm}
             onChangeText={setSearchTerm}
@@ -53,72 +100,63 @@ export default function AdminDashboard() {
         </View>
       </View>
 
-      <ScrollView style={styles.dashboardBody}>
-        {/* Inventory Management */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Inventory Management</Text>
-          <FlatList
-            data={filteredInventory}
-            keyExtractor={(item) => item.id.toString()}
-            renderItem={({ item }) => (
-              <View style={styles.inventoryItem}>
-                <Image source={{ uri: item.image }} style={styles.productImage} />
-                <View style={styles.productDetails}>
-                  <Text style={styles.productName}>{item.name}</Text>
-                  <Text style={styles.productPrice}>${item.price}</Text>
-                </View>
-              </View>
-            )}
-          />
+      {/* Show loading spinner while fetching data */}
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#007BFF" />
         </View>
-
-        {/* Sales Report */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Sales Report</Text>
-          {salesReport.map((report, index) => (
-            <View key={index} style={styles.reportItem}>
-              <Text style={styles.reportText}>
-                {report.date}: ${report.totalSales} in sales
-              </Text>
+      ) : (
+        <ScrollView style={styles.itemsBody}>
+          {/* Categorized products display */}
+          {Object.keys(categorizedProducts).map((category, index) => (
+            <View key={index} style={styles.categorySection}>
+              <Text style={styles.categoryTitle}>{category}</Text>
+              <FlatList
+                data={categorizedProducts[category]}
+                horizontal
+                keyExtractor={(item) => item.id.toString()}
+                renderItem={({ item }) => (
+                  <View style={styles.shopItem}>
+                    <Image source={{ uri: "https://via.placeholder.com/100" }} style={styles.groceryImage} />
+                    <View style={styles.groceryDetails}>
+                      <Text style={styles.groceryName}>{item.name}</Text>
+                      <Text style={styles.groceryPrice}>{item.price}</Text>
+                    </View>
+                    <TouchableOpacity style={styles.addButton} onPress={() => addToCart(item)}>
+                      <Icon name="add-shopping-cart" size={24} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                )}
+              />
             </View>
           ))}
-        </View>
+        </ScrollView>
+      )}
 
-        {/* User Management */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>User Management</Text>
-          {users.map((user, index) => (
-            <View key={index} style={styles.userItem}>
-              <Text style={styles.userName}>{user.name}</Text>
-              <Text style={styles.userRole}>{user.role}</Text>
-              <TouchableOpacity
-                style={styles.userActionButton}
-                onPress={() => Alert.alert('User Action', `Manage ${user.name}`)}
-              >
-                <Text style={styles.userActionText}>Manage</Text>
-              </TouchableOpacity>
-            </View>
-          ))}
-        </View>
-      </ScrollView>
-
-      {/* Bottom Navigation */}
+      {/* Bottom Navigation Bar */}
       <View style={styles.navBar}>
-        <TouchableOpacity style={styles.navItem}>
+        <TouchableOpacity style={styles.navItem} onPress={handleLogout}>
+          <Icon name="logout" size={24} color="#fff" />
+          <Text style={styles.navText}>Logout</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('OrderHistory')}>
+          <Icon name="receipt" size={24} color="#fff" />
+          <Text style={styles.navText}>Recent Sales</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.navItem} onPress={resetCart}>
+          <Icon name="refresh" size={24} color="#fff" />
+          <Text style={styles.navText}>Reset</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('Cart')}>
+          <Icon name="shopping-cart" size={24} color="#fff" />
+          <View style={styles.cartBadge}>
+            <Text style={styles.cartBadgeText}>{cart.length}</Text>
+          </View>
+          <Text style={styles.navText}>Cart</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('Home')}>
           <Icon name="home" size={24} color="#fff" />
-          <Text style={styles.navText}>Dashboard</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem}>
-          <Icon name="bar-chart" size={24} color="#fff" />
-          <Text style={styles.navText}>Reports</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem}>
-          <Icon name="inventory" size={24} color="#fff" />
-          <Text style={styles.navText}>Inventory</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem}>
-          <Icon name="people" size={24} color="#fff" />
-          <Text style={styles.navText}>Users</Text>
+          <Text style={styles.navText}>Home</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -133,19 +171,19 @@ const styles = StyleSheet.create({
   headerMain: {
     paddingTop: 50,
     backgroundColor: '#007BFF',
+    width: '100%',
     paddingHorizontal: 20,
   },
   header: {
-    fontSize: 36,
+    fontSize: 40,
     fontWeight: 'bold',
+    marginBottom: 2,
     color: '#fff',
-    textAlign: 'center',
   },
   subtitle: {
     fontSize: 16,
-    color: '#e0e0e0',
-    textAlign: 'center',
     marginBottom: 10,
+    color: '#ffeefe',
   },
   searchContainer: {
     flexDirection: 'row',
@@ -155,94 +193,91 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: '#fff',
     padding: 10,
+    marginBottom: 20,
   },
   searchInput: {
     flex: 1,
     fontSize: 16,
     color: '#000',
   },
-  dashboardBody: {
-    padding: 20,
-  },
-  section: {
-    marginBottom: 20,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 10,
-  },
-  inventoryItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-    padding: 10,
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#ccc',
-  },
-  productImage: {
-    width: 60,
-    height: 60,
-    borderRadius: 10,
-    marginRight: 10,
-  },
-  productDetails: {
+  loadingContainer: {
     flex: 1,
-  },
-  productName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  productPrice: {
-    fontSize: 14,
-    color: '#666',
-  },
-  reportItem: {
-    padding: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#ccc',
-  },
-  reportText: {
-    fontSize: 14,
-    color: '#333',
-  },
-  userItem: {
-    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
-    padding: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#ccc',
-  },
-  userName: {
-    flex: 1,
-    fontSize: 16,
-  },
-  userRole: {
-    fontSize: 14,
-    color: '#666',
-  },
-  userActionButton: {
-    backgroundColor: '#007BFF',
-    padding: 8,
-    borderRadius: 5,
-  },
-  userActionText: {
-    color: '#fff',
   },
   navBar: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     backgroundColor: '#007BFF',
     paddingVertical: 10,
+    borderTopWidth: 1,
+    borderColor: '#ccc',
   },
   navItem: {
     alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
   },
   navText: {
     color: '#fff',
     fontSize: 12,
     marginTop: 2,
+  },
+  cartBadge: {
+    position: 'absolute',
+    right: 8,
+    top: -5,
+    backgroundColor: 'red',
+    borderRadius: 10,
+    paddingHorizontal: 5,
+  },
+  cartBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  categorySection: {
+    marginBottom: 20,
+  },
+  categoryTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 10,
+    marginLeft: 10,
+  },
+  itemsBody: {
+    padding: 20,
+  },
+  shopItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 10,
+    marginBottom: 10,
+    marginHorizontal: 1,
+  },
+  groceryImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 10,
+    marginRight: 10,
+  },
+  groceryDetails: {
+    flex: 1,
+  },
+  groceryName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  groceryPrice: {
+    fontSize: 14,
+    color: '#666',
+  },
+  addButton: {
+    backgroundColor: '#007BFF',
+    padding: 10,
+    borderRadius: 10,
   },
 });
